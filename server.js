@@ -1,9 +1,18 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const dns = require('dns');
+const fs = require('fs');
+const path = require('path');
+
+// Load standard .env if present
 require('dotenv').config();
 
-// Ensure public DNS resolvers are used to avoid Windows ISP SRV lookup failures
+// If deployed on Render with a Secret File, load from /etc/secrets/.env
+if (fs.existsSync('/etc/secrets/.env')) {
+  require('dotenv').config({ path: '/etc/secrets/.env' });
+}
+
+// Ensure public DNS resolvers are used to avoid Windows/cloud SRV lookup failures
 try {
   dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
 } catch (e) {
@@ -211,9 +220,15 @@ app.post('/api/sensors/data', async (req, res) => {
 // Database Connection & Server Initialization
 if (!MONGODB_URI || MONGODB_URI === 'your_mongodb_atlas_connection_string') {
   console.error(
-    'Error: Valid MONGODB_URI must be provided in .env before starting the server.'
+    'Error: Valid MONGODB_URI must be provided before starting the server.'
   );
-  console.error('Please configure your MongoDB Atlas connection string in .env');
+  console.error(
+    'Detected environment keys:',
+    Object.keys(process.env)
+      .filter((k) => !k.startsWith('npm_') && !k.startsWith('_'))
+      .join(', ')
+  );
+  process.exit(1);
 }
 
 mongoose
