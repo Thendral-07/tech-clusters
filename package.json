@@ -1,0 +1,24 @@
+{
+  "name": "agricool-backend",
+  "version": "1.0.0",
+  "description": "Minimal backend for AgriCool ESP32 IoT sensor data storage",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "agricool",
+    "iot",
+    "esp32",
+    "mongodb",
+    "express"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.3.1"
+  }
+}
