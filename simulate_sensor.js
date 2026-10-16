@@ -1,7 +1,7 @@
 /**
- * AgriCool IoT Sensor Simulator
- * Simulates an ESP32 micro-controller transmitting sensor readings
- * to the AgriCool backend API (Render live URL or Localhost)
+ * AgriCool ESP32 Sensor Simulation
+ * Replicates the exact behavior, formulas, and JSON payload
+ * of the AgriCool ESP32 Arduino sketch (AGRICOOL_001)
  */
 
 const TARGET_URL =
@@ -10,104 +10,100 @@ const TARGET_URL =
     ? 'http://localhost:5000/api/sensors/data'
     : 'https://tech-clusters.onrender.com/api/sensors/data');
 
-const DEVICE_ID = process.env.DEVICE_ID || 'ESP32_AGRICOOL_001';
-const INTERVAL_MS = parseInt(process.env.INTERVAL_MS, 10) || 4000;
+// Configuration from Arduino sketch
+const DEVICE_ID = 'AGRICOOL_001';
+const TARGET_MIN_TEMP = 5.0;  // Cold storage minimum target (°C)
+const TARGET_MAX_TEMP = 10.0; // Cold storage maximum target (°C)
+const SEND_INTERVAL_MS = parseInt(process.env.INTERVAL_MS, 10) || 5000;
 
-console.log('='.repeat(65));
-console.log('🌱 AgriCool ESP32 Sensor Telemetry Simulator');
-console.log(`📡 Target API Endpoint: ${TARGET_URL}`);
-console.log(`📦 Simulated Device ID:  ${DEVICE_ID}`);
-console.log(`⏱️  Transmission Rate:   Every ${INTERVAL_MS / 1000} seconds`);
-console.log('Press Ctrl+C to terminate simulation at any time.');
-console.log('='.repeat(65));
+// Lead-acid battery state-of-charge estimator (Exact mirror of Arduino function)
+function estimateBatteryPercentage(voltage) {
+  if (voltage >= 12.7) return 100.0;
+  if (voltage >= 12.5) return 80.0;
+  if (voltage >= 12.3) return 60.0;
+  if (voltage >= 12.1) return 40.0;
+  if (voltage >= 11.9) return 20.0;
+  return 0.0;
+}
 
-// Initial State for realistic physical cold-room dynamics
-let state = {
-  chamberTemperature: 5.2,
-  ambientTemperature: 29.5,
-  batteryPercentage: 82.0,
-  batteryVoltage: 12.55,
-  solarVoltage: 18.4,
-  solarPower: 68.0,
-  powerConsumption: 12.0,
-  peltierStatus: false,
-  fanStatus: false,
-};
+// Simulated physical state
+let chamberTemp = 8.5; // Starting chamber temperature (°C)
+let ambientTemp = 31.2; // Ambient temperature outside box (°C)
+let batteryVoltage = 12.6; // Volts (from divider)
+let solarVoltage = 18.4; // Volts (from solar panel)
+let peltierOn = false;
+let fanOn = false;
+
+// updateCooling mirror of Arduino logic
+function updateCooling(temp) {
+  if (Number.isNaN(temp) || temp < -50 || temp > 100) {
+    peltierOn = false;
+    fanOn = false;
+  } else {
+    // Hysteresis prevents rapid relay switching
+    if (temp > TARGET_MAX_TEMP) {
+      peltierOn = true;
+      fanOn = true;
+    } else if (temp < TARGET_MIN_TEMP) {
+      peltierOn = false;
+      fanOn = false;
+    }
+  }
+}
+
+// Thermal and electrical step simulation
+function stepSimulation() {
+  // Update ambient temperature with realistic small environmental drift
+  ambientTemp = +(30.5 + Math.sin(Date.now() / 60000) * 2.5 + (Math.random() * 0.4 - 0.2)).toFixed(2);
+
+  // If peltier is active, chamber cools down; otherwise, it warms up towards ambient
+  if (peltierOn) {
+    chamberTemp = +(chamberTemp - (0.35 + Math.random() * 0.15)).toFixed(2);
+  } else {
+    chamberTemp = +(chamberTemp + (0.25 + Math.random() * 0.1)).toFixed(2);
+  }
+
+  // Update cooling relay states based on current chamberTemp
+  updateCooling(chamberTemp);
+
+  // Solar and Battery Voltage fluctuations
+  solarVoltage = +(17.8 + Math.random() * 1.5).toFixed(2);
+
+  if (peltierOn) {
+    // Under peltier load, battery voltage drops slightly
+    batteryVoltage = Math.max(11.8, +(batteryVoltage - 0.02).toFixed(2));
+  } else {
+    // Solar charging recovery
+    batteryVoltage = Math.min(12.8, +(batteryVoltage + 0.03).toFixed(2));
+  }
+}
 
 let packetCount = 0;
 
-function stepPhysics() {
-  // Ambient temperature slight random walk
-  state.ambientTemperature = +(
-    29.0 + Math.sin(Date.now() / 60000) * 3 + (Math.random() * 0.4 - 0.2)
-  ).toFixed(1);
-
-  // Peltier cooling control logic (Thermostat: Cool if > 6.0°C, stop if < 3.5°C)
-  if (state.chamberTemperature >= 6.0) {
-    state.peltierStatus = true;
-    state.fanStatus = true;
-  } else if (state.chamberTemperature <= 3.5) {
-    state.peltierStatus = false;
-    state.fanStatus = false;
-  }
-
-  // Thermal dynamics
-  if (state.peltierStatus) {
-    state.chamberTemperature = +(
-      state.chamberTemperature -
-      (0.15 + Math.random() * 0.05)
-    ).toFixed(2);
-    state.powerConsumption = +(68.0 + Math.random() * 4).toFixed(1);
-  } else {
-    state.chamberTemperature = +(
-      state.chamberTemperature +
-      (0.08 + Math.random() * 0.04)
-    ).toFixed(2);
-    state.powerConsumption = +(6.5 + Math.random() * 1.5).toFixed(1);
-  }
-
-  // Solar & Battery dynamics
-  const daytimeFactor = 0.85; // Simulated daytime sunlight
-  state.solarVoltage = +(18.0 + Math.random() * 1.2 * daytimeFactor).toFixed(2);
-  state.solarPower = +(60.0 + Math.random() * 25 * daytimeFactor).toFixed(1);
-
-  if (state.solarPower > state.powerConsumption) {
-    state.batteryPercentage = Math.min(
-      100,
-      +(state.batteryPercentage + 0.1).toFixed(1)
-    );
-  } else {
-    state.batteryPercentage = Math.max(
-      10,
-      +(state.batteryPercentage - 0.1).toFixed(1)
-    );
-  }
-  state.batteryVoltage = +(
-    11.8 + (state.batteryPercentage / 100) * 1.4
-  ).toFixed(2);
-}
-
-async function sendSensorPacket() {
-  stepPhysics();
+async function sendSensorData() {
+  stepSimulation();
   packetCount++;
 
+  const batteryPercentage = estimateBatteryPercentage(batteryVoltage);
+
+  // Exactly matches doc structure in Arduino sketch
   const payload = {
     deviceId: DEVICE_ID,
-    chamberTemperature: state.chamberTemperature,
-    ambientTemperature: state.ambientTemperature,
-    batteryPercentage: state.batteryPercentage,
-    batteryVoltage: state.batteryVoltage,
-    solarVoltage: state.solarVoltage,
-    solarPower: state.solarPower,
-    powerConsumption: state.powerConsumption,
-    peltierStatus: state.peltierStatus,
-    fanStatus: state.fanStatus,
+    chamberTemperature: chamberTemp,
+    ambientTemperature: ambientTemp,
+    batteryPercentage: batteryPercentage,
+    batteryVoltage: batteryVoltage,
+    solarVoltage: solarVoltage,
+    solarPower: null,
+    powerConsumption: null,
+    peltierStatus: peltierOn,
+    fanStatus: fanOn,
   };
 
   const startTime = Date.now();
 
   try {
-    const response = await fetch(TARGET_URL, {
+    const res = await fetch(TARGET_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -116,38 +112,42 @@ async function sendSensorPacket() {
     });
 
     const elapsed = Date.now() - startTime;
-    const resData = await response.json();
+    const json = await res.json();
 
-    if (response.ok && resData.success) {
+    if (res.ok && json.success) {
       console.log(
-        `[#${packetCount}] ✅ Sent in ${elapsed}ms | ` +
-          `Chamber: ${payload.chamberTemperature}°C | ` +
-          `Ambient: ${payload.ambientTemperature}°C | ` +
-          `Battery: ${payload.batteryPercentage}% (${payload.batteryVoltage}V) | ` +
-          `Solar: ${payload.solarPower}W | ` +
-          `Peltier: ${payload.peltierStatus ? 'ON ❄️' : 'OFF'} | ` +
-          `Fan: ${payload.fanStatus ? 'ON 🌀' : 'OFF'}`
+        `[#${packetCount}] ✅ Sent in ${elapsed}ms -> ` +
+          `Device: ${DEVICE_ID} | ` +
+          `Chamber: ${chamberTemp}°C (${peltierOn ? 'COOLING ❄️' : 'IDLE ⏸️'}) | ` +
+          `Ambient: ${ambientTemp}°C | ` +
+          `Battery: ${batteryVoltage}V (${batteryPercentage}%) | ` +
+          `Solar: ${solarVoltage}V | ` +
+          `Relays: Peltier=${peltierOn ? 'ON' : 'OFF'}, Fan=${fanOn ? 'ON' : 'OFF'}`
       );
     } else {
-      console.error(
-        `[#${packetCount}] ⚠️ Server responded with HTTP ${response.status}:`,
-        resData
-      );
+      console.error(`[#${packetCount}] ⚠️ Error response:`, json);
     }
   } catch (err) {
-    console.error(
-      `[#${packetCount}] ❌ Transmission failed: ${err.message}`
-    );
+    console.error(`[#${packetCount}] ❌ Network error: ${err.message}`);
   }
 }
 
-// Initial transmission immediately, then repeated on interval
-sendSensorPacket();
-const intervalHandle = setInterval(sendSensorPacket, INTERVAL_MS);
+console.log('='.repeat(70));
+console.log('🚀 AgriCool ESP32 Arduino Reference Simulator');
+console.log(`📡 URL:        ${TARGET_URL}`);
+console.log(`🆔 Device ID:  ${DEVICE_ID}`);
+console.log(`❄️ Target:     ${TARGET_MIN_TEMP}°C - ${TARGET_MAX_TEMP}°C`);
+console.log(`⏱️ Interval:   ${SEND_INTERVAL_MS}ms`);
+console.log('='.repeat(70));
 
-// Handle clean shutdown
+// Send first packet immediately
+sendSensorData();
+
+// Repeated transmissions
+const timer = setInterval(sendSensorData, SEND_INTERVAL_MS);
+
 process.on('SIGINT', () => {
-  console.log('\n🛑 Stopping simulator. Total packets transmitted:', packetCount);
-  clearInterval(intervalHandle);
+  console.log(`\n🛑 Simulator stopped. Total packets: ${packetCount}`);
+  clearInterval(timer);
   process.exit(0);
 });
