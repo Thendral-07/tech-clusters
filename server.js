@@ -225,6 +225,82 @@ app.post('/api/sensors/data', async (req, res) => {
   }
 });
 
+// 3. Get Recent Sensor Data (with optional deviceId and limit)
+app.get('/api/sensors/data', async (req, res) => {
+  try {
+    const { deviceId, limit = 50 } = req.query;
+    const filter = {};
+    if (deviceId) {
+      filter.deviceId = String(deviceId).trim();
+    }
+
+    const readings = await SensorData.find(filter)
+      .sort({ timestamp: -1 })
+      .limit(Math.min(parseInt(limit, 10) || 50, 200));
+
+    return res.status(200).json({
+      success: true,
+      count: readings.length,
+      data: readings,
+    });
+  } catch (error) {
+    console.error('Error fetching sensor data:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve sensor data',
+      error: error.message,
+    });
+  }
+});
+
+// 4. Get Latest Sensor Reading (overall or by deviceId)
+app.get('/api/sensors/latest', async (req, res) => {
+  try {
+    const latest = await SensorData.findOne().sort({ timestamp: -1 });
+    if (!latest) {
+      return res.status(404).json({
+        success: false,
+        message: 'No sensor data found',
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: latest,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve latest sensor data',
+      error: error.message,
+    });
+  }
+});
+
+app.get('/api/sensors/latest/:deviceId', async (req, res) => {
+  try {
+    const latest = await SensorData.findOne({
+      deviceId: req.params.deviceId.trim(),
+    }).sort({ timestamp: -1 });
+
+    if (!latest) {
+      return res.status(404).json({
+        success: false,
+        message: `No sensor data found for device ${req.params.deviceId}`,
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: latest,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve device latest data',
+      error: error.message,
+    });
+  }
+});
+
 // Database Connection & Server Initialization
 // Start the Express HTTP server immediately so Render detects the open port and health checks pass
 app.listen(PORT, '0.0.0.0', () => {
