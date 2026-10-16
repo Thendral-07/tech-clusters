@@ -12,16 +12,23 @@ if (fs.existsSync('/etc/secrets/.env')) {
   require('dotenv').config({ path: '/etc/secrets/.env' });
 }
 
-// Ensure public DNS resolvers are used to avoid Windows/cloud SRV lookup failures
-try {
-  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
-} catch (e) {
-  // Ignore if custom DNS cannot be set
+// Ensure public DNS resolvers are used on local/Windows machines to avoid ISP SRV lookup failures.
+// Do NOT override DNS on Render or cloud containers where internal DNS resolvers are required.
+if (!process.env.RENDER) {
+  try {
+    dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+  } catch (e) {
+    // Ignore if custom DNS cannot be set
+  }
 }
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
+const MONGODB_URI =
+  process.env.MONGODB_URI ||
+  process.env.MONGO_URI ||
+  process.env.MONGODB_URL ||
+  process.env.MONGO_URL;
 
 // Express JSON middleware to parse incoming JSON payloads
 app.use(express.json());
@@ -91,6 +98,7 @@ app.get('/', (req, res) => {
   return res.status(200).json({
     success: true,
     message: 'AgriCool backend is running',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'connecting_or_disconnected',
   });
 });
 
@@ -218,9 +226,14 @@ app.post('/api/sensors/data', async (req, res) => {
 });
 
 // Database Connection & Server Initialization
+// Start the Express HTTP server immediately so Render detects the open port and health checks pass
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`AgriCool backend server is running on port ${PORT}`);
+});
+
 if (!MONGODB_URI || MONGODB_URI === 'your_mongodb_atlas_connection_string') {
   console.error(
-    'Error: Valid MONGODB_URI must be provided before starting the server.'
+    '⚠️ Error: Valid MONGODB_URI must be provided. In Render, please add MONGODB_URI in the Environment Variables tab.'
   );
   console.error(
     'Detected environment keys:',
@@ -228,20 +241,19 @@ if (!MONGODB_URI || MONGODB_URI === 'your_mongodb_atlas_connection_string') {
       .filter((k) => !k.startsWith('npm_') && !k.startsWith('_'))
       .join(', ')
   );
-  process.exit(1);
-}
-
-mongoose
-  .connect(MONGODB_URI, {
-    dbName: 'agricool',
-  })
-  .then(() => {
-    console.log('Connected to MongoDB Atlas (Database: agricool, Collection: sensorData)');
-    app.listen(PORT, () => {
-      console.log(`AgriCool backend server is running on port ${PORT}`);
+} else {
+  mongoose
+    .connect(MONGODB_URI, {
+      dbName: 'agricool',
+      serverSelectionTimeoutMS: 10000,
+    })
+    .then(() => {
+      console.log('Connected to MongoDB Atlas (Database: agricool, Collection: sensorData)');
+    })
+    .catch((err) => {
+      console.error('MongoDB Atlas connection error:', err.message);
+      console.error(
+        '👉 TIP: In MongoDB Atlas -> Network Access, ensure IP 0.0.0.0/0 (Allow access from anywhere) is added so Render can connect!'
+      );
     });
-  })
-  .catch((err) => {
-    console.error('MongoDB Atlas connection error:', err.message);
-    process.exit(1);
-  });
+}
