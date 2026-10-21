@@ -30,12 +30,15 @@ export const startSimulation = () => {
           };
         }
 
+        const currentChamberTemp = lastData?.chamberTemperature ?? 24;
+        const currentAmbientTemp = lastData?.ambientTemperature ?? 31;
+
         // Automatic Mode Logic
         if (device.automaticMode) {
-          if (lastData.chamberTemperature > device.targetMaxTemperature) {
+          if (currentChamberTemp > device.targetMaxTemperature) {
             device.peltierStatus = true;
             device.fanStatus = true;
-          } else if (lastData.chamberTemperature < device.targetMinTemperature) {
+          } else if (currentChamberTemp < device.targetMinTemperature) {
             device.peltierStatus = false;
             device.fanStatus = false;
           }
@@ -43,12 +46,12 @@ export const startSimulation = () => {
         }
 
         // Simulate Temperature
-        let newChamberTemp = lastData.chamberTemperature;
+        let newChamberTemp = currentChamberTemp;
         if (device.peltierStatus) {
           newChamberTemp -= 0.15; // Cooling
         } else {
           // Warm up towards ambient
-          if (newChamberTemp < lastData.ambientTemperature) {
+          if (newChamberTemp < currentAmbientTemp) {
             newChamberTemp += 0.05;
           }
         }

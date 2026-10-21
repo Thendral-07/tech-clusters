@@ -7,10 +7,26 @@ const router = express.Router();
 
 router.post('/data', async (req, res) => {
   // For physical ESP32 to push data
-  const sensorData = new SensorData(req.body);
-  await sensorData.save();
-  io.emit(`sensor:update:${req.body.deviceId}`, sensorData);
-  res.status(201).json(sensorData);
+  try {
+    const payload = req.body || {};
+    const sensorData = new SensorData(payload);
+    await sensorData.save();
+    const deviceId = sensorData.deviceId || 'UNKNOWN';
+    if (io) {
+      io.emit(`sensor:update:${deviceId}`, sensorData);
+    }
+    res.status(201).json({
+      success: true,
+      message: 'Sensor data saved successfully',
+      data: sensorData,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error saving sensor data',
+      error: error.message,
+    });
+  }
 });
 
 router.get('/latest/:deviceId', protect, async (req, res) => {
