@@ -86,9 +86,11 @@ async function sendSensorData() {
 
   const batteryPercentage = estimateBatteryPercentage(batteryVoltage);
 
-  // Exactly matches doc structure in Arduino sketch
+  // Matches doc structure for both hardware and simulation
   const payload = {
     deviceId: DEVICE_ID,
+    temperature: chamberTemp,
+    humidity: 65.0,
     chamberTemperature: chamberTemp,
     ambientTemperature: ambientTemp,
     batteryPercentage: batteryPercentage,

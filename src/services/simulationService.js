@@ -30,7 +30,7 @@ export const startSimulation = () => {
           };
         }
 
-        const currentChamberTemp = lastData?.chamberTemperature ?? 24;
+        const currentChamberTemp = lastData?.chamberTemperature ?? lastData?.temperature ?? 24;
         const currentAmbientTemp = lastData?.ambientTemperature ?? 31;
 
         // Automatic Mode Logic
@@ -78,7 +78,9 @@ export const startSimulation = () => {
 
         const newSensorData = new SensorData({
           deviceId: device.deviceId,
+          temperature: Number(newChamberTemp.toFixed(2)),
           chamberTemperature: Number(newChamberTemp.toFixed(2)),
+          humidity: lastData.humidity ?? 65.0,
           ambientTemperature: lastData.ambientTemperature,
           batteryPercentage: Number(newBatteryPercentage.toFixed(1)),
           batteryVoltage: Number((11.0 + (newBatteryPercentage / 100) * 2.5).toFixed(2)),

@@ -9,6 +9,18 @@ router.post('/data', async (req, res) => {
   // For physical ESP32 to push data
   try {
     const payload = req.body || {};
+
+    // Auto-map temperature <-> chamberTemperature for DHT11 hardware compatibility
+    if (payload.temperature !== undefined && payload.temperature !== null) {
+      if (payload.chamberTemperature === undefined || payload.chamberTemperature === null) {
+        payload.chamberTemperature = Number(payload.temperature);
+      }
+    } else if (payload.chamberTemperature !== undefined && payload.chamberTemperature !== null) {
+      if (payload.temperature === undefined || payload.temperature === null) {
+        payload.temperature = Number(payload.chamberTemperature);
+      }
+    }
+
     const sensorData = new SensorData(payload);
     await sensorData.save();
     const deviceId = sensorData.deviceId || 'UNKNOWN';
