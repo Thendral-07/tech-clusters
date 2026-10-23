@@ -41,6 +41,14 @@ const sensorDataSchema = new mongoose.Schema(
       default: 'UNKNOWN',
       trim: true,
     },
+    temperature: {
+      type: Number,
+      default: null,
+    },
+    humidity: {
+      type: Number,
+      default: null,
+    },
     chamberTemperature: {
       type: Number,
       default: null,
@@ -114,9 +122,25 @@ function sanitizeSensorPayload(body) {
     sanitized.deviceId = 'UNKNOWN';
   }
 
+  // Handle DHT11 ESP32 hardware fields (temperature and humidity)
+  // Cross-map temperature <-> chamberTemperature for total backward & hardware compatibility
+  let rawTemp = body.temperature !== undefined && body.temperature !== null && body.temperature !== ''
+    ? body.temperature
+    : (body.chamberTemperature !== undefined && body.chamberTemperature !== null && body.chamberTemperature !== '' ? body.chamberTemperature : null);
+
+  if (rawTemp !== null) {
+    const parsedTemp = Number(rawTemp);
+    const validTemp = Number.isNaN(parsedTemp) ? null : parsedTemp;
+    sanitized.temperature = validTemp;
+    sanitized.chamberTemperature = validTemp;
+  } else {
+    sanitized.temperature = null;
+    sanitized.chamberTemperature = null;
+  }
+
   // Optional numeric fields (parses numbers or numeric strings; defaults to null if omitted/invalid)
   const numericFields = [
-    'chamberTemperature',
+    'humidity',
     'ambientTemperature',
     'batteryPercentage',
     'batteryVoltage',
@@ -192,7 +216,7 @@ app.post('/api/sensors/data', async (req, res) => {
 
     // Log successful insertion without exposing credentials or sensitive internals
     console.log(
-      `[Sensor Data Saved] Device: ${savedDoc.deviceId} | Chamber Temp: ${savedDoc.chamberTemperature !== null ? savedDoc.chamberTemperature + '°C' : 'N/A'} | Timestamp: ${savedDoc.timestamp.toISOString()}`
+      `[Sensor Data Saved] Device: ${savedDoc.deviceId} | Temp: ${savedDoc.temperature !== null ? savedDoc.temperature + '°C' : (savedDoc.chamberTemperature !== null ? savedDoc.chamberTemperature + '°C' : 'N/A')} | Humidity: ${savedDoc.humidity !== null ? savedDoc.humidity + '%' : 'N/A'} | Timestamp: ${savedDoc.timestamp.toISOString()}`
     );
 
     return res.status(201).json({

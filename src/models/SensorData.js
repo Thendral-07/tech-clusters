@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 
 const sensorDataSchema = new mongoose.Schema({
   deviceId: { type: String, default: 'UNKNOWN', trim: true },
+  temperature: { type: Number, default: null },
+  humidity: { type: Number, default: null },
   chamberTemperature: { type: Number, default: null },
   ambientTemperature: { type: Number, default: null },
   batteryPercentage: { type: Number, default: null },
